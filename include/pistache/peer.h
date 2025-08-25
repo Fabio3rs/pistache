@@ -24,6 +24,7 @@
 
 #ifdef PISTACHE_USE_SSL
 
+#include <openssl/err.h>
 #include <openssl/ssl.h>
 
 #endif /* PISTACHE_USE_SSL */
@@ -52,7 +53,10 @@ namespace Pistache::Tcp
 
         const Address& address() const;
         const std::string& hostname();
-        Fd fd() const;
+        Fd fd() const; // can return PS_FD_EMPTY
+        em_socket_t actualFd() const; // can return -1
+
+        void closeFd();
 
         void* ssl() const;
 
@@ -60,10 +64,17 @@ namespace Pistache::Tcp
         std::shared_ptr<void> getData(std::string name) const;
         std::shared_ptr<void> tryGetData(std::string name) const;
 
-        Async::Promise<ssize_t> send(const RawBuffer& buffer, int flags = 0);
+        Async::Promise<PST_SSIZE_T> send(const RawBuffer& buffer,
+                                         int flags = 0);
         size_t getID() const;
 
     protected:
+        // (provide default constructor so child class ConcretePeer can have
+        //  default constructor)
+        Peer()
+            : id_(0)
+        { }
+
         Peer(Fd fd, const Address& addr, void* ssl);
 
     private:
@@ -72,7 +83,9 @@ namespace Pistache::Tcp
         static size_t getUniqueId();
 
         Transport* transport_ = nullptr;
-        Fd fd_                = -1;
+
+        Fd fd_ = PS_FD_EMPTY;
+
         Address addr;
 
         std::string hostname_;

@@ -236,9 +236,9 @@ namespace Pistache::Rest
                          std::move(description));
         }
 
-        SubPath SubPath::path(const std::string& prefix) const
+        SubPath SubPath::path(const std::string& pth_prefix) const
         {
-            return SubPath(this->prefix + prefix, paths);
+            return SubPath(this->prefix + pth_prefix, paths);
         }
 
         Parameter::Parameter(std::string name, std::string description)
@@ -408,7 +408,7 @@ namespace Pistache::Rest
     void Swagger::install(Rest::Router& router)
     {
 
-        Route::Handler uiHandler = [=](const Rest::Request& req,
+        Route::Handler uiHandler = [this](const Rest::Request& req,
                                        Http::ResponseWriter response) {
             const auto& res = req.resource();
 
@@ -466,13 +466,13 @@ namespace Pistache::Rest
                     return trailingSlashValue;
                 }
 
-                std::string join(const std::string& value) const
+                std::string join(const std::string& value_parm) const
                 {
                     std::string val;
-                    if (value[0] == '/')
-                        val = value.substr(1);
+                    if (value_parm[0] == '/')
+                        val = value_parm.substr(1);
                     else
-                        val = value;
+                        val = value_parm;
                     return trailingSlashValue + val;
                 }
 
@@ -529,7 +529,7 @@ namespace Pistache::Rest
             return Route::Result::Failure;
         };
 
-        router.addCustomHandler(uiHandler);
+        router.addCustomHandler(std::move(uiHandler));
     }
 
 } // namespace Pistache::Rest

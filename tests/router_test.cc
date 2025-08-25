@@ -12,13 +12,21 @@
 
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <gmock/gmock-matchers.h>
 
 #include <pistache/common.h>
 #include <pistache/endpoint.h>
 #include <pistache/http.h>
 #include <pistache/router.h>
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <httplib.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 using namespace Pistache;
 using namespace Pistache::Rest;
@@ -75,10 +83,10 @@ bool matchSplat(const SegmentTreeNode& routes, const std::string& req,
         return false;
 
     size_t i = 0;
-    for (const auto& s : list)
+    for (const auto& an_s : list)
     {
         auto splat = splats[i].as<std::string>();
-        if (splat != s)
+        if (splat != an_s)
             return false;
         ++i;
     }
@@ -248,6 +256,29 @@ TEST(router_test, test_route_head_request)
     endpoint->shutdown();
 }
 
+TEST(router_test, test_remove_not_existing)
+{
+    SegmentTreeNode routes;
+
+    using testing::ThrowsMessage;
+
+    ASSERT_THAT(
+        [&] { routes.removeRoute("/v1/hello"); },
+        ThrowsMessage<std::runtime_error>("Requested route does not exist."));
+    ASSERT_THAT(
+        [&] { routes.removeRoute("/v1/hello/:name/"); },
+        ThrowsMessage<std::runtime_error>("Requested route does not exist."));
+    ASSERT_THAT(
+        [&] { routes.removeRoute("/get/:key?/bar"); },
+        ThrowsMessage<std::runtime_error>("Requested route does not exist."));
+    ASSERT_THAT(
+        [&] { routes.removeRoute("/say/*/to/*"); },
+        ThrowsMessage<std::runtime_error>("Requested route does not exist."));
+    ASSERT_THAT(
+        [&] { routes.removeRoute("*/api"); },
+        ThrowsMessage<std::runtime_error>("Requested route does not exist."));
+}
+
 class MyHandler
 {
 public:
@@ -257,14 +288,23 @@ public:
         const Pistache::Rest::Request&,
         Pistache::Http::ResponseWriter response)
     {
-        count_++;
+        (*count_)++;
         response.send(Pistache::Http::Code::Ok);
     }
 
-    int getCount() { return count_; }
+    void handleConst(
+        const Pistache::Rest::Request&,
+        Pistache::Http::ResponseWriter response) const
+    {
+        (*count_)++;
+        response.send(Pistache::Http::Code::Ok);
+    }
+
+
+    int getCount() { return *count_; }
 
 private:
-    int count_ = 0;
+    std::unique_ptr<int> count_ = std::make_unique<int>(0);
 };
 
 TEST(router_test, test_bind_shared_ptr)
@@ -280,6 +320,7 @@ TEST(router_test, test_bind_shared_ptr)
     Rest::Router router;
 
     Routes::Head(router, "/tinkywinky", Routes::bind(&MyHandler::handle, sharedPtr));
+    Routes::Head(router, "/checkconst", Routes::bind(&MyHandler::handleConst, sharedPtr));
 
     endpoint->setHandler(router.handler());
     endpoint->serveThreaded();
@@ -289,6 +330,8 @@ TEST(router_test, test_bind_shared_ptr)
     ASSERT_EQ(sharedPtr->getCount(), 0);
     client.Head("/tinkywinky");
     ASSERT_EQ(sharedPtr->getCount(), 1);
+    client.Head("/checkconst");
+    ASSERT_EQ(sharedPtr->getCount(), 2);
 
     endpoint->shutdown();
 }
@@ -382,7 +425,7 @@ TEST(router_test, test_auth_middleware)
     router.addMiddleware(Routes::middleware(&fill_auth_header));
     router.addMiddleware(Routes::middleware(&HandlerWithAuthMiddleware::do_auth, &handler));
 
-    Routes::Head(router, "/tinkywinky", Routes::bind(&HandlerWithAuthMiddleware::handle, &handler));
+    Routes::Head(router, "/tinkywinky", Routes::bind(&HandlerWithAuthMiddleware::handleConst, &handler));
     endpoint->setHandler(router.handler());
     endpoint->serveThreaded();
 
